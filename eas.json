@@ -1,0 +1,33 @@
+{
+  "cli": {
+    "version": ">= 16.3.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "preview"
+      }
+    },
+    "production": {
+       "env": {
+        "APP_VARIANT": "production"
+      },
+       "android": {
+        "buildType": "app-bundle"
+      },
+      "autoIncrement": true    
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
