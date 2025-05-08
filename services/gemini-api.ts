@@ -188,57 +188,83 @@ async function analyzeImageWithRealApi(imageBase64: string, medications?: Medica
     throw new Error(`API request failed with status ${response.status}: ${errorText}`);
   }
 
-  // Get the response text
-  const responseText = await response.text();
-  console.log('Raw API response:', responseText);
-  
-  let analysisText = '';
-  let medicationAlerts: string[] = [];
-  let isInMedicationAlertSection = false;
+  try {
+    // Parse the JSON response
+    const jsonResponse = await response.json();
+    console.log('Raw API response:', jsonResponse);
+    
+    // Extract analysis text and medication alerts from the response
+    const analysisText = jsonResponse.analysis || '';
+    const medicationAlert = jsonResponse.medication_alert;
+    
+    let medicationAlerts: string[] = [];
+    if (medicationAlert) {
+      medicationAlerts = [medicationAlert];
+    }
+    
+    console.log('Final analysis text length:', analysisText.length);
+    console.log('Final analysis text (first 100 chars):', analysisText.substring(0, 100));
+    console.log('Final medication alerts:', medicationAlerts);
+    
+    const parsedAnalysis = parseAnalysisFromText(analysisText);
+    return {
+      ...parsedAnalysis,
+      medicationAlerts: medicationAlerts.length > 0 ? medicationAlerts : undefined
+    };
+  } catch (error) {
+    console.error('Error parsing JSON response:', error);
+    
+    const responseText = await response.text();
+    console.log('Falling back to text parsing. Raw response:', responseText);
+    
+    let analysisText = '';
+    let medicationAlerts: string[] = [];
+    let isInMedicationAlertSection = false;
 
-  // Parse the response text line by line
-  const lines = responseText.split('\n');
-  
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      const data = line.slice(5).trim();
-      if (data && data !== '[DONE]') {
-        try {
-          const parsed = JSON.parse(data);
-          console.log('Parsed chunk:', parsed);
-          
-          if (parsed.content) {
-            if (parsed.type === 'separator') {
-              if (parsed.content.includes('MEDICATION_ALERT_START')) {
-                isInMedicationAlertSection = true;
-                console.log('Entered medication alert section');
-              } else if (parsed.content.includes('MEDICATION_ALERT_END')) {
-                isInMedicationAlertSection = false;
-                console.log('Exited medication alert section');
+    // Parse the response text line by line
+    const lines = responseText.split('\n');
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(5).trim();
+        if (data && data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            console.log('Parsed chunk:', parsed);
+            
+            if (parsed.content) {
+              if (parsed.type === 'separator') {
+                if (parsed.content.includes('MEDICATION_ALERT_START')) {
+                  isInMedicationAlertSection = true;
+                  console.log('Entered medication alert section');
+                } else if (parsed.content.includes('MEDICATION_ALERT_END')) {
+                  isInMedicationAlertSection = false;
+                  console.log('Exited medication alert section');
+                }
+              } else if (parsed.type === 'medication_alert') {
+                console.log('Found medication alert:', parsed.content);
+                medicationAlerts.push(parsed.content);
+              } else if (!isInMedicationAlertSection) {
+                analysisText += parsed.content;
               }
-            } else if (parsed.type === 'medication_alert') {
-              console.log('Found medication alert:', parsed.content);
-              medicationAlerts.push(parsed.content);
-            } else if (!isInMedicationAlertSection) {
-              analysisText += parsed.content;
             }
+          } catch (e) {
+            console.error('Error parsing chunk:', e);
           }
-        } catch (e) {
-          console.error('Error parsing chunk:', e);
         }
       }
     }
-  }
 
-  console.log('Final analysis text length:', analysisText.length);
-  console.log('Final analysis text (first 100 chars):', analysisText.substring(0, 100));
-  console.log('Final medication alerts:', medicationAlerts);
-  
-  const parsedAnalysis = parseAnalysisFromText(analysisText);
-  return {
-    ...parsedAnalysis,
-    medicationAlerts: medicationAlerts.length > 0 ? medicationAlerts : undefined
-  };
+    console.log('Final analysis text length:', analysisText.length);
+    console.log('Final analysis text (first 100 chars):', analysisText.substring(0, 100));
+    console.log('Final medication alerts:', medicationAlerts);
+    
+    const parsedAnalysis = parseAnalysisFromText(analysisText);
+    return {
+      ...parsedAnalysis,
+      medicationAlerts: medicationAlerts.length > 0 ? medicationAlerts : undefined
+    };
+  }
 }
 
 function parseAnalysisFromText(content: string): Omit<ApiResponse, 'medicationAlerts'> {
